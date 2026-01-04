@@ -255,7 +255,7 @@ func main() {
 		log.WithContext(ctx).Fatalf("Error setting up GORM OpenTelemetry plugin: %v", err)
 	}
 
-	if env.IsDevEnv() {
+	if env.IsDevEnv() || env.IsOnPrem() {
 		_, err := model.MigrateDB(ctx, db)
 
 		if err != nil {

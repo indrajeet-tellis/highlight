@@ -107,7 +107,9 @@ services:
 
   backend:
     container_name: backend
-    image: ${BACKEND_IMAGE_NAME-ghcr.io/highlight/highlight-backend:latest}
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
     restart: on-failure
     volumes:
       - highlight-data:/highlight-data
@@ -115,16 +117,28 @@ services:
       - ./backend/env.enc.dgst:/build/env.enc.dgst
     env_file: .env
     depends_on:
-      - postgres
-      - kafka
-      - redis
-      - clickhouse
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_started
     networks:
       - dokploy-network
 
   frontend:
     container_name: frontend
-    image: ${FRONTEND_IMAGE_NAME-ghcr.io/highlight/highlight-frontend:latest}
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        - REACT_APP_AUTH_MODE=${REACT_APP_AUTH_MODE}
+        - REACT_APP_FRONTEND_URI=${REACT_APP_FRONTEND_URI}
+        - REACT_APP_PRIVATE_GRAPH_URI=${REACT_APP_PRIVATE_GRAPH_URI}
+        - REACT_APP_PUBLIC_GRAPH_URI=${REACT_APP_PUBLIC_GRAPH_URI}
+        - REACT_APP_OTLP_ENDPOINT=${REACT_APP_OTLP_ENDPOINT}
     restart: on-failure
     volumes:
       - highlight-data:/highlight-data
@@ -133,28 +147,6 @@ services:
       - dokploy-network
     depends_on:
       - backend
-
-  migrator:
-    image: golang:alpine
-    container_name: migrator
-    restart: "no"
-    working_dir: /highlight/backend
-    volumes:
-      - ./:/highlight
-    environment:
-      - PSQL_HOST=postgres
-      - PSQL_PORT=5432
-      - PSQL_USER=postgres
-      - PSQL_PASSWORD=${PSQL_PASSWORD}
-      - PSQL_DB=postgres
-      - SSL=false
-      - ON_PREM=true
-    command: /bin/sh -c "apk add --no-cache git && go run ./migrations/main.go"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - dokploy-network
 
 volumes:
   highlight-data:
