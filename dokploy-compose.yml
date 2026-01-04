@@ -93,9 +93,6 @@ services:
     container_name: collector
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    volumes:
-      - ./backend/localhostssl/server.crt:/server.crt
-      - ./backend/localhostssl/server.key:/server.key
     networks:
       - dokploy-network
 
@@ -131,7 +128,7 @@ services:
     restart: on-failure
     volumes:
       - highlight-data:/highlight-data
-    env_file: .env.dokploy.template
+    env_file: .env
     networks:
       - dokploy-network
     depends_on:
