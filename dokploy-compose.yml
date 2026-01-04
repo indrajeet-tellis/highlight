@@ -131,10 +131,6 @@ services:
     restart: on-failure
     volumes:
       - highlight-data:/highlight-data
-    ports:
-      - '0.0.0.0:3000:3000'
-      - '0.0.0.0:6006:6006'
-      - '0.0.0.0:8080:8080'
     env_file: .env.dokploy.template
     networks:
       - dokploy-network
