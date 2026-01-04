@@ -61,7 +61,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres-data-v2:/var/lib/postgresql/data
-      - ./scripts/migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres-data-v2:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
@@ -132,11 +132,38 @@ services:
     image: ${FRONTEND_IMAGE_NAME-ghcr.io/highlight/highlight-frontend:latest}
     restart: on-failure
     volumes:
-      - ./backend/localhostssl/server.key:/etc/ssl/private/ssl-cert.key
-      - ./backend/localhostssl/server.pem:/etc/ssl/certs/ssl-cert.pem
-    env_file: .env
+      - highlight-data:/highlight-data
+      - ../backend/localhostssl/server.key:/etc/ssl/private/ssl-cert.key
+      - ../backend/localhostssl/server.crt:/etc/ssl/certs/ssl-cert.pem
+    ports:
+      - '0.0.0.0:3000:3000'
+      - '0.0.0.0:6006:6006'
+      - '0.0.0.0:8080:8080'
+    env_file: .env.dokploy.template
+    networks:
+      - dokploy-network
     depends_on:
       - backend
+
+  migrator:
+    image: golang:1.22-alpine
+    container_name: migrator
+    restart: "no"
+    working_dir: /highlight/backend
+    volumes:
+      - ./:/highlight
+    environment:
+      - PSQL_HOST=postgres
+      - PSQL_PORT=5432
+      - PSQL_USER=postgres
+      - PSQL_PASSWORD=${PSQL_PASSWORD}
+      - PSQL_DB=postgres
+      - SSL=false
+      - ON_PREM=true
+    command: /bin/sh -c "apk add --no-cache git && go run ./migrations/main.go"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - dokploy-network
 
