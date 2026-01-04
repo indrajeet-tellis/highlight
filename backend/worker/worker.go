@@ -525,6 +525,21 @@ func (w *Worker) PublicWorker(ctx context.Context, topic kafkaqueue.TopicType) {
 	if err != nil {
 		log.WithContext(ctx).WithError(err).Error("failed to get config for public workers")
 	}
+	if sys == nil {
+		sys = &model.SystemConfiguration{
+			Active:            true,
+			MainWorkers:       64,
+			MainQueueSize:     1000,
+			LogsWorkers:       1,
+			LogsFlushSize:     1000,
+			LogsQueueSize:     100,
+			LogsFlushTimeout:  time.Second,
+			TraceWorkers:      1,
+			TraceFlushSize:    1000,
+			TraceQueueSize:    100,
+			TraceFlushTimeout: time.Second,
+		}
+	}
 
 	mainConfig := WorkerConfig{
 		Topic:     kafkaqueue.TopicTypeDefault,

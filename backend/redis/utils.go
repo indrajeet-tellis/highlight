@@ -80,7 +80,7 @@ func NewClient() *Client {
 	if !env.IsTestEnv() {
 		lfu = cache.NewTinyLFU(100_000, 5*time.Second)
 	}
-	if env.IsDevOrTestEnv() {
+	if env.IsDevOrTestEnv() || env.IsOnPrem() {
 		client := redis.NewClient(&redis.Options{
 			Addr:            ServerAddr,
 			Password:        env.Config.RedisPassword,
