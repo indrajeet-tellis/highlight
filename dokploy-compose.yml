@@ -1,0 +1,155 @@
+# Dokploy-specific consolidated compose file for Highlight.io Hobby Deployment
+services:
+  zookeeper:
+    image: ${ZOOKEEPER_IMAGE_NAME-confluentinc/cp-zookeeper:7.7.0}
+    container_name: zookeeper
+    restart: on-failure
+    volumes:
+      - zoo-data:/var/lib/zookeeper/data
+      - zoo-log:/var/lib/zookeeper/log
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - dokploy-network
+
+  kafka:
+    image: ${KAFKA_IMAGE_NAME-confluentinc/cp-kafka:7.7.0}
+    container_name: kafka
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    restart: on-failure
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_BROKER_ID: 1
+      KAFKA_CONSUMER_MAX_PARTITION_FETCH_BYTES: 268435456
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_SEGMENT_BYTES: 268435456
+      KAFKA_MESSAGE_MAX_BYTES: 268435456
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_PRODUCER_MAX_REQUEST_SIZE: 268435456
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 268435456
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+    networks:
+      - dokploy-network
+
+  redis:
+    container_name: redis
+    image: ${REDIS_IMAGE_NAME-redis:8.0.2}
+    restart: on-failure
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD-redispassword}
+    volumes:
+      - redis-data:/data
+    command:
+      - redis-server
+      - --save 60 1
+      - --loglevel warning
+    networks:
+      - dokploy-network
+
+  postgres:
+    container_name: postgres
+    image: ${POSTGRES_IMAGE_NAME-ankane/pgvector:v0.5.1}
+    restart: on-failure
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/migrations/init.sql:/root/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
+  clickhouse:
+    container_name: clickhouse
+    image: ${CLICKHOUSE_IMAGE_NAME-clickhouse/clickhouse-server:24.3.15.72-alpine}
+    restart: on-failure
+    volumes:
+      - ./docker/config.xml:/etc/clickhouse-server/config.d/highlight.xml
+      - ./docker/users.xml:/etc/clickhouse-server/users.d/highlight.xml
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    networks:
+      - dokploy-network
+
+  collector:
+    restart: on-failure
+    build:
+      dockerfile: ./docker/collector.Dockerfile
+      context: .
+      args:
+        - IN_DOCKER_GO=true
+        - SSL=false
+    container_name: collector
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - ./backend/localhostssl/server.crt:/server.crt
+      - ./backend/localhostssl/server.key:/server.key
+    networks:
+      - dokploy-network
+
+  predictions:
+    restart: on-failure
+    build:
+      dockerfile: ./packages/predictions/predictions.Dockerfile
+      context: .
+    container_name: predictions
+    networks:
+      - dokploy-network
+
+  backend:
+    container_name: backend
+    image: ${BACKEND_IMAGE_NAME-ghcr.io/highlight/highlight-backend:latest}
+    restart: on-failure
+    volumes:
+      - highlight-data:/highlight-data
+      - ./backend/env.enc:/build/env.enc
+      - ./backend/env.enc.dgst:/build/env.enc.dgst
+      - ./backend/localhostssl/server.key:/build/localhostssl/server.key
+      - ./backend/localhostssl/server.crt:/build/localhostssl/server.crt
+    env_file: .env
+    depends_on:
+      - postgres
+      - kafka
+      - redis
+      - clickhouse
+    networks:
+      - dokploy-network
+
+  frontend:
+    container_name: frontend
+    image: ${FRONTEND_IMAGE_NAME-ghcr.io/highlight/highlight-frontend:latest}
+    restart: on-failure
+    volumes:
+      - ./backend/localhostssl/server.key:/etc/ssl/private/ssl-cert.key
+      - ./backend/localhostssl/server.pem:/etc/ssl/certs/ssl-cert.pem
+    env_file: .env
+    depends_on:
+      - backend
+    networks:
+      - dokploy-network
+
+volumes:
+  highlight-data:
+  postgres-data:
+  clickhouse-data:
+  clickhouse-logs:
+  redis-data:
+  kafka-data:
+  zoo-log:
+  zoo-data:
+
+networks:
+  dokploy-network:
+    external: true
